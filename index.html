@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Aim Trainer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  background: #111;
+  color: white;
+  font-family: sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+button, input {
+  padding: 10px;
+  font-size: 16px;
+  margin-top: 5px;
+}
+
+#home, #result {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  text-align: center;
+}
+
+#ui {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  display: none;
+  gap: 15px;
+  font-size: 18px;
+}
+
+.dot {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: cyan;
+  box-shadow: 0 0 20px cyan;
+  cursor: crosshair;
+}
+
+.sound-on { animation: shake .3s; }
+.sound-off { animation: pop .2s; }
+
+@keyframes shake {
+  0% { transform: rotate(0); }
+  25% { transform: rotate(5deg); }
+  50% { transform: rotate(-5deg); }
+  75% { transform: rotate(5deg); }
+  100% { transform: rotate(0); }
+}
+
+@keyframes pop {
+  from { transform: scale(0.7); }
+  to { transform: scale(1); }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ホーム -->
+<div id="home">
+  <h1>Aim Trainer</h1>
+  <input id="nameInput" placeholder="名前を入力">
+  <button id="soundBtn" onclick="toggleSound()">🔊 SOUND ON</button>
+  <button onclick="startGame(event)">START</button>
+  <div id="ranking"></div>
+</div>
+
+<!-- ゲームUI -->
+<div id="ui">
+  <div id="score">Score: 0</div>
+  <div id="timer">30</div>
+</div>
+
+<!-- 結果 -->
+<div id="result">
+  <h2>RESULT</h2>
+  <p id="resultText"></p>
+  <button onclick="location.reload()">HOME</button>
+</div>
+
+<!-- 音 -->
+<audio id="hit" src="hit.mp3"></audio>
+<audio id="miss" src="miss.mp3"></audio>
+
+<script>
+/* ===== 変数 ===== */
+let playerName = localStorage.getItem("playerName") || "";
+let soundOn = localStorage.getItem("sound") !== "off";
+let score = 0;
+let time = 30;
+let dot = null;
+let playing = false;
+
+const hitSE = document.getElementById("hit");
+const missSE = document.getElementById("miss");
+const soundBtn = document.getElementById("soundBtn");
+const nameInput = document.getElementById("nameInput");
+
+nameInput.value = playerName;
+updateSoundBtn();
+updateHome();
+
+/* ===== 音再生（完全制御） ===== */
+function playSE(audio) {
+  if (!soundOn) return;
+  audio.currentTime = 0;
+  audio.play();
+}
+
+/* ===== サウンド切替 ===== */
+function updateSoundBtn() {
+  soundBtn.textContent = soundOn ? "🔊 SOUND ON" : "🔇 SOUND OFF";
+}
+
+function toggleSound() {
+  soundOn = !soundOn;
+  localStorage.setItem("sound", soundOn ? "on" : "off");
+  soundBtn.className = soundOn ? "sound-on" : "sound-off";
+  updateSoundBtn();
+}
+
+/* ===== ゲーム開始 ===== */
+function startGame(e) {
+  e.stopPropagation();
+
+  const name = nameInput.value.trim();
+  if (!name) {
+    alert("名前を入力してください！");
+    return;
+  }
+
+  playerName = name;
+  localStorage.setItem("playerName", playerName);
+
+  document.getElementById("home").style.display = "none";
+  document.getElementById("ui").style.display = "flex";
+
+  score = 0;
+  time = 30;
+  playing = true;
+
+  document.getElementById("score").textContent = "Score: 0";
+  document.getElementById("timer").textContent = "30";
+
+  spawnDot();
+  startTimer();
+}
+
+/* ===== ドット生成 ===== */
+function spawnDot() {
+  if (!playing) return;
+  if (dot) dot.remove();
+
+  dot = document.createElement("div");
+  dot.className = "dot";
+
+  dot.style.left = Math.random() * (innerWidth - 40) + "px";
+  dot.style.top = Math.random() * (innerHeight - 40) + "px";
+
+  dot.onclick = (e) => {
+    e.stopPropagation();
+    score++;
+    playSE(hitSE);
+    document.getElementById("score").textContent = "Score: " + score;
+    spawnDot();
+  };
+
+  document.body.appendChild(dot);
+}
+
+/* ===== MISS（完全修正版） ===== */
+document.body.onclick = (e) => {
+  if (!playing) return;
+  if (e.target !== dot) {
+    playSE(missSE);
+  }
+};
+
+/* ===== タイマー ===== */
+function startTimer() {
+  const t = setInterval(() => {
+    time--;
+    document.getElementById("timer").textContent = time;
+    if (time <= 0) {
+      clearInterval(t);
+      endGame();
+    }
+  }, 1000);
+}
+
+/* ===== 終了 ===== */
+function endGame() {
+  playing = false;
+  if (dot) dot.remove();
+
+  updateRanking();
+  document.getElementById("resultText").textContent =
+    `${playerName} のスコア：${score}`;
+  document.getElementById("result").style.display = "flex";
+}
+
+/* ===== ランキング（ローカル） ===== */
+function updateRanking() {
+  const key = "ranking";
+  let rankings = JSON.parse(localStorage.getItem(key)) || [];
+  rankings.push({ name: playerName, score });
+  rankings.sort((a, b) => b.score - a.score);
+  rankings = rankings.slice(0, 10);
+  localStorage.setItem(key, JSON.stringify(rankings));
+  displayRanking(rankings);
+}
+
+function displayRanking(rankings) {
+  const r = document.getElementById("ranking");
+  r.innerHTML =
+    "<b>RANKING</b><br>" +
+    rankings.map((e, i) => `${i + 1}. ${e.name}: ${e.score}`).join("<br>");
+}
+
+function updateHome() {
+  const rankings = JSON.parse(localStorage.getItem("ranking")) || [];
+  displayRanking(rankings);
+}
+</script>
+
+</body>
+</html>
