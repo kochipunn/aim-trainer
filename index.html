@@ -16,21 +16,24 @@ body {
 }
 
 button, input {
-  padding: 10px;
+  padding: 10px 16px;
   font-size: 16px;
-  margin-top: 5px;
 }
 
-#home, #result {
+#home, #result, #pause {
   position: fixed;
   inset: 0;
-  display: flex;
+  display: none;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   gap: 15px;
-  text-align: center;
+  background: #111;
 }
+
+#home { display: flex; z-index: 10; }
+#result { z-index: 20; }
+#pause { z-index: 30; background: rgba(0,0,0,.85); }
 
 #ui {
   position: fixed;
@@ -39,6 +42,7 @@ button, input {
   display: none;
   gap: 15px;
   font-size: 18px;
+  z-index: 5;
 }
 
 .dot {
@@ -48,107 +52,77 @@ button, input {
   border-radius: 50%;
   background: cyan;
   box-shadow: 0 0 20px cyan;
-  cursor: crosshair;
-}
-
-.sound-on { animation: shake .3s; }
-.sound-off { animation: pop .2s; }
-
-@keyframes shake {
-  0% { transform: rotate(0); }
-  25% { transform: rotate(5deg); }
-  50% { transform: rotate(-5deg); }
-  75% { transform: rotate(5deg); }
-  100% { transform: rotate(0); }
-}
-
-@keyframes pop {
-  from { transform: scale(0.7); }
-  to { transform: scale(1); }
 }
 </style>
 </head>
 
 <body>
 
-<!-- ホーム -->
 <div id="home">
   <h1>Aim Trainer</h1>
   <input id="nameInput" placeholder="名前を入力">
-  <button id="soundBtn" onclick="toggleSound()">🔊 SOUND ON</button>
-  <button onclick="startGame(event)">START</button>
+  <button id="soundBtn">🔊 SOUND ON</button>
+  <button id="startBtn">START</button>
   <div id="ranking"></div>
 </div>
 
-<!-- ゲームUI -->
 <div id="ui">
   <div id="score">Score: 0</div>
   <div id="timer">30</div>
 </div>
 
-<!-- 結果 -->
+<div id="pause">PAUSED</div>
+
 <div id="result">
   <h2>RESULT</h2>
   <p id="resultText"></p>
   <button onclick="location.reload()">HOME</button>
 </div>
 
-<!-- 音 -->
 <audio id="hit" src="hit.mp3"></audio>
 <audio id="miss" src="miss.mp3"></audio>
 
 <script>
-/* ===== 変数 ===== */
-let playerName = localStorage.getItem("playerName") || "";
-let soundOn = localStorage.getItem("sound") !== "off";
 let score = 0;
 let time = 30;
 let dot = null;
 let playing = false;
+let timerId = null;
 
 const hitSE = document.getElementById("hit");
 const missSE = document.getElementById("miss");
+
+let soundOn = localStorage.getItem("sound") !== "off";
+
+const home = document.getElementById("home");
+const ui = document.getElementById("ui");
+const result = document.getElementById("result");
+const pause = document.getElementById("pause");
 const soundBtn = document.getElementById("soundBtn");
 const nameInput = document.getElementById("nameInput");
 
-nameInput.value = playerName;
-updateSoundBtn();
-updateHome();
+nameInput.value = localStorage.getItem("playerName") || "";
 
-/* ===== 音再生（完全制御） ===== */
-function playSE(audio) {
-  if (!soundOn) return;
-  audio.currentTime = 0;
-  audio.play();
-}
-
-/* ===== サウンド切替 ===== */
 function updateSoundBtn() {
   soundBtn.textContent = soundOn ? "🔊 SOUND ON" : "🔇 SOUND OFF";
 }
+updateSoundBtn();
 
-function toggleSound() {
+soundBtn.onclick = () => {
   soundOn = !soundOn;
   localStorage.setItem("sound", soundOn ? "on" : "off");
-  soundBtn.className = soundOn ? "sound-on" : "sound-off";
   updateSoundBtn();
-}
+};
 
-/* ===== ゲーム開始 ===== */
-function startGame(e) {
-  e.stopPropagation();
-
+document.getElementById("startBtn").onclick = () => {
   const name = nameInput.value.trim();
-  if (!name) {
-    alert("名前を入力してください！");
-    return;
-  }
+  if (!name) return alert("名前を入力してください");
 
-  playerName = name;
-  localStorage.setItem("playerName", playerName);
+  localStorage.setItem("playerName", name);
 
-  document.getElementById("home").style.display = "none";
-  document.getElementById("ui").style.display = "flex";
+  home.style.display = "none";
+  result.style.display = "none";
+  ui.style.display = "flex";
 
   score = 0;
   time = 30;
@@ -159,9 +133,8 @@ function startGame(e) {
 
   spawnDot();
   startTimer();
-}
+};
 
-/* ===== ドット生成 ===== */
 function spawnDot() {
   if (!playing) return;
   if (dot) dot.remove();
@@ -175,7 +148,10 @@ function spawnDot() {
   dot.onclick = (e) => {
     e.stopPropagation();
     score++;
-    playSE(hitSE);
+    if (soundOn) {
+      hitSE.currentTime = 0;
+      hitSE.play();
+    }
     document.getElementById("score").textContent = "Score: " + score;
     spawnDot();
   };
@@ -183,59 +159,52 @@ function spawnDot() {
   document.body.appendChild(dot);
 }
 
-/* ===== MISS（完全修正版） ===== */
 document.body.onclick = (e) => {
-  if (!playing) return;
-  if (e.target !== dot) {
-    playSE(missSE);
+  if (playing && !e.target.classList.contains("dot") && soundOn) {
+    missSE.currentTime = 0;
+    missSE.play();
   }
 };
 
-/* ===== タイマー ===== */
 function startTimer() {
-  const t = setInterval(() => {
+  timerId = setInterval(() => {
     time--;
     document.getElementById("timer").textContent = time;
-    if (time <= 0) {
-      clearInterval(t);
-      endGame();
-    }
+    if (time <= 0) endGame();
   }, 1000);
 }
 
-/* ===== 終了 ===== */
 function endGame() {
   playing = false;
+  clearInterval(timerId);
   if (dot) dot.remove();
 
-  updateRanking();
+  ui.style.display = "none";
+  result.style.display = "flex";
+
+  const name = localStorage.getItem("playerName");
   document.getElementById("resultText").textContent =
-    `${playerName} のスコア：${score}`;
-  document.getElementById("result").style.display = "flex";
+    `${name} のスコア：${score}`;
+
+  saveRanking(name, score);
 }
 
-/* ===== ランキング（ローカル） ===== */
-function updateRanking() {
-  const key = "ranking";
-  let rankings = JSON.parse(localStorage.getItem(key)) || [];
-  rankings.push({ name: playerName, score });
-  rankings.sort((a, b) => b.score - a.score);
-  rankings = rankings.slice(0, 10);
-  localStorage.setItem(key, JSON.stringify(rankings));
-  displayRanking(rankings);
+function saveRanking(name, score) {
+  let r = JSON.parse(localStorage.getItem("ranking")) || [];
+  r.push({ name, score });
+  r.sort((a,b)=>b.score-a.score);
+  r = r.slice(0,10);
+  localStorage.setItem("ranking", JSON.stringify(r));
+  showRanking(r);
 }
 
-function displayRanking(rankings) {
-  const r = document.getElementById("ranking");
-  r.innerHTML =
+function showRanking(r) {
+  document.getElementById("ranking").innerHTML =
     "<b>RANKING</b><br>" +
-    rankings.map((e, i) => `${i + 1}. ${e.name}: ${e.score}`).join("<br>");
+    r.map((e,i)=>`${i+1}. ${e.name}: ${e.score}`).join("<br>");
 }
 
-function updateHome() {
-  const rankings = JSON.parse(localStorage.getItem("ranking")) || [];
-  displayRanking(rankings);
-}
+showRanking(JSON.parse(localStorage.getItem("ranking")) || []);
 </script>
 
 </body>
