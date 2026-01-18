@@ -11,3 +11,6 @@ PC・スマートフォンの両方に対応しており、サーバー不要で
 - hit.mp3
 - miss.mp3
 - bgm.mp3
+## 🌍 公開URL
+
+https://kochpunn.github.io/aim-trainer/
